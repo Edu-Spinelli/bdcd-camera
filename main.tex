@@ -19,6 +19,8 @@
 \usepackage{fancyhdr}
 \usepackage{microtype}
 \usepackage{caption}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning}
 
 % --- Código / listagens ---
 \usepackage{xcolor}
@@ -57,6 +59,12 @@
 \definecolor{codegray}{rgb}{0.5,0.5,0.5}
 \definecolor{codepurple}{rgb}{0.58,0,0.82}
 \definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% Cores para nós do grafo
+\definecolor{nodedeputado}{RGB}{100,149,237}
+\definecolor{nodepartido}{RGB}{220,20,60}
+\definecolor{nodefrente}{RGB}{50,205,50}
+\definecolor{nodeuf}{RGB}{255,165,0}
 
 % Listagens
 \lstdefinestyle{mystyle}{
@@ -126,7 +134,7 @@
 
 \subsection{Contextualização}
 
-Este trabalho apresenta uma análise de dados legislativos da Câmara dos Deputados do Brasil utilizando um banco de dados orientado a grafos (Neo4j). A escolha deste tema permite explorar relações complexas entre deputados, partidos, frentes parlamentares e votações, demonstrando as vantagens de modelagem em grafo para este tipo de domínio.
+Este trabalho apresenta uma análise de dados legislativos da Câmara dos Deputados do Brasil utilizando um banco de dados orientado a grafos (Neo4j). A escolha deste tema permite explorar relações complexas entre deputados, partidos, frentes parlamentares e representação geográfica, demonstrando as vantagens de modelagem em grafo para este tipo de domínio.
 
 \subsection{Fonte dos Dados}
 
@@ -157,16 +165,16 @@ O dataset final contém:
 
 \begin{table}[h]
 \centering
-\begin{tabular}{|l|r|}
+\begin{tabular}{|l|r|r|}
 \hline
-\textbf{Entidade} & \textbf{Quantidade} \\
+\textbf{Entidade} & \textbf{Quantidade} & \textbf{Tamanho} \\
 \hline
-Deputados & 1.125 \\
-Partidos & 38 \\
-Frentes Parlamentares & 1.428 \\
-Estados (UF) & 27 \\
+Deputados & 1.125 & 848 KB \\
+Partidos & 38 & 5.8 KB \\
+Frentes Parlamentares & 1.428 & 280 KB \\
+Estados (UF) & 27 & - \\
 \hline
-\textbf{Total de Nós} & \textbf{2.618} \\
+\textbf{Total de Nós} & \textbf{2.618} & \textbf{1.13 MB} \\
 \hline
 \end{tabular}
 \caption{Quantidade de nós no grafo}
@@ -178,16 +186,14 @@ Estados (UF) & 27 \\
 \hline
 \textbf{Relacionamento} & \textbf{Quantidade} \\
 \hline
-FILIADO\_A (Deputado → Partido) & 1.125 \\
-REPRESENTA (Deputado → UF) & 1.125 \\
+FILIADO\_A (Deputado $\rightarrow$ Partido) & 1.125 \\
+REPRESENTA (Deputado $\rightarrow$ UF) & 1.125 \\
 \hline
 \textbf{Total de Relacionamentos} & \textbf{2.250} \\
 \hline
 \end{tabular}
 \caption{Quantidade de relacionamentos no grafo}
 \end{table}
-
-\textbf{Nota}: O dataset poderia incluir também membros de frentes, autores de proposições e votos individuais (centenas de milhares de relacionamentos), mas para fins didáticos e de performance, focamos nas entidades principais.
 
 \subsection{Detalhes Importantes}
 
@@ -237,7 +243,7 @@ class ColetorDadosCamara:
         self.output_dir = output_dir
 
     def _paginar_requisicao(self, url, params=None):
-        """Faz paginação automática de requisições"""
+        """Faz paginacao automatica de requisicoes"""
         todos_dados = []
         pagina = 1
         while True:
@@ -246,7 +252,7 @@ class ColetorDadosCamara:
             if not data or 'dados' not in data:
                 break
             todos_dados.extend(data['dados'])
-            # Verificar se há mais páginas
+            # Verificar se ha mais paginas
             links = data.get('links', [])
             tem_proxima = any(link.get('rel') == 'next' for link in links)
             if not tem_proxima:
@@ -255,7 +261,7 @@ class ColetorDadosCamara:
         return todos_dados
 
     def get_deputados(self, data_inicio="2019-01-01", data_fim="2024-12-31"):
-        """Coleta todos os deputados do período"""
+        """Coleta todos os deputados do periodo"""
         url = f"{self.base_url}/deputados"
         params = {
             'dataInicio': data_inicio,
@@ -274,7 +280,7 @@ O script pode ser executado em diferentes modos:
 # Modo teste (poucos dados)
 python coletor_dados.py --modo teste
 
-# Modo rápido (dados essenciais)
+# Modo rapido (dados essenciais)
 python coletor_dados.py --modo rapido
 
 # Modo completo (todos os dados)
@@ -290,30 +296,66 @@ dados_camara/
 |-- partidos.json          # 38 partidos (5.8 KB)
 |-- deputados.json         # 1.125 deputados (848 KB)
 |-- frentes.json           # 1.428 frentes (280 KB)
-+-- orgaos.json            # Orgaos e comissoes
 \end{lstlisting}
-
-\subsection{Tela Principal de Coleta}
-
-[INSERIR SCREENSHOT da execução do script mostrando o progresso da coleta]
 
 %----------------------------------------------------------------------------------------
 % 3. MODELAGEM DO GRAFO
 %----------------------------------------------------------------------------------------
+\newpage
 \section{Modelagem dos Dados em Grafo}
 
-\subsection{Diagrama do Modelo}
+\subsection{Visão Geral do Modelo}
 
-[INSERIR DIAGRAMA com 2 exemplos de cada tipo de nó e relacionamento]
+O modelo de dados representa as relações entre entidades do sistema legislativo brasileiro. Utilizamos 4 tipos de nós e 2 tipos de relacionamentos principais.
 
-\subsection{Tipos de Nós}
+\subsection{Diagrama do Modelo com Exemplos}
 
-\subsubsection{Deputado}
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  node distance=2.5cm,
+  every node/.style={font=\footnotesize},
+  deputado/.style={rectangle, rounded corners, draw=nodedeputado, fill=nodedeputado!20, thick, minimum width=3.5cm, minimum height=1.2cm, align=center},
+  partido/.style={rectangle, rounded corners, draw=nodepartido, fill=nodepartido!20, thick, minimum width=3cm, minimum height=1.2cm, align=center},
+  frente/.style={rectangle, rounded corners, draw=nodefrente, fill=nodefrente!20, thick, minimum width=3.5cm, minimum height=1.2cm, align=center},
+  uf/.style={rectangle, rounded corners, draw=nodeuf, fill=nodeuf!20, thick, minimum width=2.5cm, minimum height=1.2cm, align=center},
+  rel/.style={->, >=stealth, thick}
+]
+
+% Deputados
+\node[deputado] (dep1) {\textbf{Deputado}\\id: 220593\\nome: Abilio Brunini};
+\node[deputado, below=1.5cm of dep1] (dep2) {\textbf{Deputado}\\id: 204554\\nome: Abílio Santana};
+
+% Partidos
+\node[partido, right=3cm of dep1] (part1) {\textbf{Partido}\\sigla: PL\\nome: Partido Liberal};
+\node[partido, right=3cm of dep2] (part2) {\textbf{Partido}\\sigla: PSC\\nome: Social Cristão};
+
+% UFs
+\node[uf, below right=1cm and 3cm of dep1] (uf1) {\textbf{UF}\\sigla: MT\\regiao: Centro-Oeste};
+\node[uf, below=1.5cm of uf1] (uf2) {\textbf{UF}\\sigla: BA\\regiao: Nordeste};
+
+% Frentes
+\node[frente, below=4cm of dep2] (frente1) {\textbf{Frente}\\id: 55700\\Integracao Sul-Americana};
+\node[frente, right=2cm of frente1] (frente2) {\textbf{Frente}\\id: 54214\\Agropecuaria};
+
+% Relacionamentos
+\draw[rel, blue, very thick] (dep1) -- node[above, sloped] {FILIADO\_A} (part1);
+\draw[rel, blue, very thick] (dep2) -- node[above, sloped] {FILIADO\_A} (part2);
+\draw[rel, orange, very thick] (dep1) -- node[above, sloped] {REPRESENTA} (uf1);
+\draw[rel, orange, very thick] (dep2) -- node[above, sloped] {REPRESENTA} (uf2);
+
+\end{tikzpicture}
+\caption{Modelo de grafo com 2 exemplos de cada tipo de nó e relacionamento}
+\end{figure}
+
+\subsection{Descrição dos Tipos de Nós}
+
+\subsubsection{1. Deputado}
 Representa um deputado federal.
 
 \textbf{Propriedades}:
 \begin{itemize}
-  \item \texttt{id}: Integer (identificador único)
+  \item \texttt{id}: Integer (identificador único da API)
   \item \texttt{nome}: String (nome completo)
   \item \texttt{siglaPartido}: String (ex: "PT", "PL")
   \item \texttt{siglaUf}: String (ex: "SP", "BA")
@@ -321,24 +363,13 @@ Representa um deputado federal.
   \item \texttt{email}: String (e-mail institucional)
 \end{itemize}
 
-\textbf{Exemplos}:
-\begin{lstlisting}[language=Java, caption=Nós Deputado]
-(:Deputado {
-  id: 220593,
-  nome: "Abilio Brunini",
-  siglaPartido: "PL",
-  siglaUf: "MT"
-})
-
-(:Deputado {
-  id: 204554,
-  nome: "Abílio Santana",
-  siglaPartido: "PSC",
-  siglaUf: "BA"
-})
+\textbf{Exemplos reais}:
+\begin{lstlisting}[language=Java]
+(:Deputado {id: 220593, nome: "Abilio Brunini", siglaPartido: "PL", siglaUf: "MT"})
+(:Deputado {id: 204554, nome: "Abílio Santana", siglaPartido: "PSC", siglaUf: "BA"})
 \end{lstlisting}
 
-\subsubsection{Partido}
+\subsubsection{2. Partido}
 Representa um partido político brasileiro.
 
 \textbf{Propriedades}:
@@ -349,22 +380,13 @@ Representa um partido político brasileiro.
   \item \texttt{uri}: String (endpoint da API)
 \end{itemize}
 
-\textbf{Exemplos}:
-\begin{lstlisting}[language=Java, caption=Nós Partido]
-(:Partido {
-  id: 36768,
-  sigla: "PT",
-  nome: "Partido dos Trabalhadores"
-})
-
-(:Partido {
-  id: 37906,
-  sigla: "PL",
-  nome: "Partido Liberal"
-})
+\textbf{Exemplos reais}:
+\begin{lstlisting}[language=Java]
+(:Partido {id: 36768, sigla: "PT", nome: "Partido dos Trabalhadores"})
+(:Partido {id: 37906, sigla: "PL", nome: "Partido Liberal"})
 \end{lstlisting}
 
-\subsubsection{Frente}
+\subsubsection{3. Frente}
 Representa uma frente parlamentar (agrupamento temático de deputados).
 
 \textbf{Propriedades}:
@@ -375,22 +397,13 @@ Representa uma frente parlamentar (agrupamento temático de deputados).
   \item \texttt{uri}: String
 \end{itemize}
 
-\textbf{Exemplos}:
-\begin{lstlisting}[language=Java, caption=Nós Frente]
-(:Frente {
-  id: 55700,
-  titulo: "Frente Parlamentar Mista pela Integração Sul-Americana",
-  idLegislatura: 57
-})
-
-(:Frente {
-  id: 54214,
-  titulo: "Frente Parlamentar da Agropecuária",
-  idLegislatura: 56
-})
+\textbf{Exemplos reais}:
+\begin{lstlisting}[language=Java]
+(:Frente {id: 55700, titulo: "Frente Parlamentar Mista pela Integracao Sul-Americana", idLegislatura: 57})
+(:Frente {id: 54214, titulo: "Frente Parlamentar da Agropecuaria", idLegislatura: 56})
 \end{lstlisting}
 
-\subsubsection{UF}
+\subsubsection{4. UF}
 Representa um estado brasileiro.
 
 \textbf{Propriedades}:
@@ -400,56 +413,49 @@ Representa um estado brasileiro.
   \item \texttt{regiao}: String (ex: "Sudeste", "Nordeste")
 \end{itemize}
 
-\textbf{Exemplos}:
-\begin{lstlisting}[language=Java, caption=Nós UF]
-(:UF {sigla: "SP", nome: "São Paulo", regiao: "Sudeste"})
+\textbf{Exemplos reais}:
+\begin{lstlisting}[language=Java]
+(:UF {sigla: "SP", nome: "Sao Paulo", regiao: "Sudeste"})
 (:UF {sigla: "BA", nome: "Bahia", regiao: "Nordeste"})
 \end{lstlisting}
 
-\subsection{Tipos de Relacionamentos}
+\subsection{Descrição dos Relacionamentos}
 
-\subsubsection{FILIADO\_A}
-\textbf{De}: Deputado → Partido\\
+\subsubsection{1. FILIADO\_A}
+\textbf{De}: Deputado $\rightarrow$ Partido\\
 \textbf{Tipo}: Unidirecional, N:1\\
-\textbf{Propriedades}: Nenhuma
+\textbf{Descrição}: Indica a filiação partidária do deputado.
 
-\textbf{Descrição}: Indica a filiação partidária atual do deputado.
-
-\textbf{Exemplos}:
+\textbf{Exemplos reais}:
 \begin{lstlisting}[language=Java]
 (:Deputado {nome: "Abilio Brunini"})-[:FILIADO_A]->(:Partido {sigla: "PL"})
 (:Deputado {nome: "Abílio Santana"})-[:FILIADO_A]->(:Partido {sigla: "PSC"})
 \end{lstlisting}
 
-\subsubsection{REPRESENTA}
-\textbf{De}: Deputado → UF\\
+\subsubsection{2. REPRESENTA}
+\textbf{De}: Deputado $\rightarrow$ UF\\
 \textbf{Tipo}: Unidirecional, N:1\\
-\textbf{Propriedades}: Nenhuma
-
 \textbf{Descrição}: Indica qual estado o deputado representa.
 
-\textbf{Exemplos}:
+\textbf{Exemplos reais}:
 \begin{lstlisting}[language=Java]
 (:Deputado {nome: "Abilio Brunini"})-[:REPRESENTA]->(:UF {sigla: "MT"})
 (:Deputado {nome: "Abílio Santana"})-[:REPRESENTA]->(:UF {sigla: "BA"})
 \end{lstlisting}
 
-\subsection{Cardinalidades}
+\subsection{Justificativa da Modelagem}
 
-\begin{table}[h]
-\centering
-\begin{tabular}{|l|l|l|}
-\hline
-\textbf{Relacionamento} & \textbf{Tipo} & \textbf{Descrição} \\
-\hline
-FILIADO\_A & N:1 & Cada deputado tem 1 partido \\
-REPRESENTA & N:1 & Cada deputado representa 1 UF \\
-\hline
-\end{tabular}
-\caption{Cardinalidades dos relacionamentos}
-\end{table}
+A modelagem em grafo é ideal para este domínio por:
 
-\textbf{Nota}: O modelo pode ser expandido para incluir MEMBRO\_DE (Deputado → Frente), AUTOR\_DE (Deputado → Proposição) e VOTOU (Deputado → Votação), criando um grafo muito mais rico para análises complexas.
+\begin{enumerate}
+  \item \textbf{Relações Naturais}: Deputados, partidos e estados possuem conexões naturais que grafos expressam melhor que tabelas
+
+  \item \textbf{Consultas de Travessia}: Perguntas como "deputados do mesmo partido em estados diferentes" são triviais em grafo
+
+  \item \textbf{Flexibilidade}: Adicionar novos tipos de relacionamentos (MEMBRO\_DE, VOTOU) não requer ALTER TABLE
+
+  \item \textbf{Performance}: Consultas multi-hop são otimizadas por índices de adjacência
+\end{enumerate}
 
 %----------------------------------------------------------------------------------------
 % 4. SCRIPT DE IMPORTAÇÃO
@@ -548,7 +554,7 @@ RETURN n
 LIMIT 100
 \end{lstlisting}
 
-[INSERIR SCREENSHOT do Neo4j Browser mostrando o grafo completo com os diferentes tipos de nós e relacionamentos]
+\textit{[Esta consulta retorna uma visualização gráfica de 100 nós conectados por seus relacionamentos no Neo4j Browser]}
 
 \subsection{Estatísticas do Grafo}
 
@@ -571,13 +577,16 @@ Deputado & 1.125 \\
 Partido & 38 \\
 UF & 27 \\
 \hline
+\textbf{TOTAL} & \textbf{2.618 nós} \\
+\hline
 \end{tabular}
-\caption{Contagem de nós por tipo}
+\caption{Estatísticas gerais do grafo}
 \end{table}
 
 %----------------------------------------------------------------------------------------
 % 6. CINCO CONSULTAS E ANÁLISES
 %----------------------------------------------------------------------------------------
+\newpage
 \section{Cinco Consultas para Insights}
 
 \subsection{Consulta 1: Distribuição de Deputados por Partido}
@@ -597,13 +606,13 @@ LIMIT 15
 \end{lstlisting}
 
 \subsubsection{Resultado}
-[INSERIR SCREENSHOT ou tabela do resultado]
 
 \begin{table}[h]
 \centering
-\begin{tabular}{|l|l|r|}
+\small
+\begin{tabular}{|l|p{6cm}|r|}
 \hline
-\textbf{Partido} & \textbf{Nome} & \textbf{Deputados} \\
+\textbf{Sigla} & \textbf{Nome Completo} & \textbf{Deputados} \\
 \hline
 PL & Partido Liberal & 128 \\
 PP & Progressistas & 118 \\
@@ -615,9 +624,14 @@ REPUBLICANOS & Republicanos & 80 \\
 PSDB & Partido da Social Democracia Brasileira & 58 \\
 PSB & Partido Socialista Brasileiro & 49 \\
 PDT & Partido Democrático Trabalhista & 41 \\
+PODE & Podemos & 36 \\
+PSOL & Partido Socialismo e Liberdade & 18 \\
+DEM & Democratas & 18 \\
+PTB & Partido Trabalhista Brasileiro & 17 \\
+SOLIDARIEDADE & Solidariedade & 17 \\
 \hline
 \end{tabular}
-\caption{Top 10 partidos por número de deputados}
+\caption{Top 15 partidos por número de deputados}
 \end{table}
 
 \subsubsection{Análise dos Resultados}
@@ -626,33 +640,38 @@ Esta consulta revela a \textbf{fragmentação partidária} brasileira e a força
 
 \textbf{Insights principais}:
 
-\begin{enumerate}
-  \item \textbf{Domínio do "Centrão"}: Os partidos de centro e centro-direita (PL, PP, União Brasil, PSD, MDB, Republicanos) juntos têm 621 deputados (55\% do total), mostrando sua força como bloco de sustentação governamental.
+O domínio do "Centrão" é evidente: partidos de centro e centro-direita (PL, PP, União Brasil, PSD, MDB, Republicanos) juntos possuem mais de 600 deputados, representando aproximadamente 55\% do total. Essa concentração demonstra sua força como bloco de sustentação governamental e explica historicamente porque esses partidos são decisivos em votações importantes.
 
-  \item \textbf{Polarização PT vs PL}: Os dois maiores partidos representam polos opostos do espectro político brasileiro. O PL (direita/centro-direita) com 128 deputados e o PT (esquerda) com 111 deputados refletem a divisão ideológica do país.
+A polarização PT vs PL também fica clara nos dados. O PL (direita/centro-direita) com 128 deputados e o PT (esquerda) com 111 deputados representam os dois maiores partidos e refletem a divisão ideológica do país nos últimos anos. A diferença de apenas 17 deputados entre eles mostra um equilíbrio de forças entre os polos opostos do espectro político.
 
-  \item \textbf{Fragmentação}: A distribuição entre 20+ partidos com representação significativa demonstra a dificuldade de governabilidade. Nenhum partido sozinho tem maioria absoluta (necessário 257 deputados em 513).
+A fragmentação extrema é outro ponto crucial: nenhum partido sozinho tem maioria absoluta (necessário 257 deputados de um total de 513). Os 15 maiores partidos mostram uma distribuição relativamente equilibrada, o que torna a governabilidade um desafio permanente. Qualquer governo precisa formar coalizões amplas e negociar com múltiplos partidos para aprovar projetos, especialmente emendas constitucionais que requerem 2/3 dos votos (342 deputados).
 
-  \item \textbf{Implicações para Governabilidade}: Qualquer governo precisa formar coalizões amplas. A força numérica do Centrão explica porque historicamente esses partidos são decisivos em votações importantes.
-
-  \item \textbf{Vantagem para Grafos}: Esta análise, trivial em grafo (1 MATCH), seria um simples GROUP BY em SQL. Mas grafos brilham quando cruzamos esta informação com votações, frentes temáticas e alianças informais - análises que veremos nas próximas consultas.
-\end{enumerate}
-
-\subsection{Consulta 2: Geografia Política - Deputados por Região}
+\subsection{Consulta 2: Geografia Política - Distribuição Regional}
 
 \subsubsection{Pergunta de Negócio}
-\textbf{"Como se distribui geograficamente a representação política? Quais regiões têm mais peso no Congresso?"}
+\textbf{"Como se distribui geograficamente a representação política? Quais regiões têm mais peso no Congresso e como os estados se comparam?"}
 
 \subsubsection{Código Cypher}
-\begin{lstlisting}[language=Java, caption=Deputados por região]
+\begin{lstlisting}[language=Java, caption=Deputados por região e top estados]
+// Primeiro: Distribuicao por regiao
 MATCH (uf:UF)<-[:REPRESENTA]-(d:Deputado)
 WITH uf.regiao AS Regiao, count(d) AS numDeputados
-RETURN Regiao,
-       numDeputados AS TotalDeputados
+RETURN Regiao, numDeputados AS TotalDeputados
 ORDER BY numDeputados DESC
+
+// Segundo: Top 10 estados
+MATCH (uf:UF)<-[:REPRESENTA]-(d:Deputado)
+WITH uf, count(d) AS numDeputados
+RETURN uf.sigla AS Estado,
+       uf.nome AS NomeEstado,
+       uf.regiao AS Regiao,
+       numDeputados AS NumDeputados
+ORDER BY numDeputados DESC
+LIMIT 10
 \end{lstlisting}
 
 \subsubsection{Resultado}
+
 \begin{table}[h]
 \centering
 \begin{tabular}{|l|r|r|}
@@ -665,27 +684,15 @@ Sul & 159 & 14.1\% \\
 Norte & 157 & 14.0\% \\
 Centro-Oeste & 102 & 9.1\% \\
 \hline
-\textbf{Total} & \textbf{1.125} & \textbf{100\%} \\
+\textbf{TOTAL} & \textbf{1.125} & \textbf{100\%} \\
 \hline
 \end{tabular}
 \caption{Distribuição de deputados por região}
 \end{table}
 
-\subsubsection{Top 10 Estados}
-\begin{lstlisting}[language=Java, caption=Estados com mais deputados]
-MATCH (uf:UF)<-[:REPRESENTA]-(d:Deputado)
-WITH uf, count(d) AS numDeputados
-RETURN uf.sigla AS Estado,
-       uf.nome AS NomeEstado,
-       uf.regiao AS Regiao,
-       numDeputados AS NumDeputados
-ORDER BY numDeputados DESC
-LIMIT 10
-\end{lstlisting}
-
 \begin{table}[h]
 \centering
-\begin{tabular}{|l|l|l|r|}
+\begin{tabular}{|l|p{3.5cm}|l|r|}
 \hline
 \textbf{UF} & \textbf{Estado} & \textbf{Região} & \textbf{Deputados} \\
 \hline
@@ -708,165 +715,147 @@ SC & Santa Catarina & Sul & 40 \\
 
 Esta consulta revela o \textbf{peso político} de cada região e como a população se reflete (ou não) na representação legislativa.
 
-\textbf{Insights principais}:
+O domínio do Sudeste é incontestável: com 377 deputados (33.5\% do total), a região tem poder de veto sobre qualquer matéria que exija maioria absoluta. São Paulo sozinho, com 144 deputados (12.8\% da Câmara), tem mais representantes que toda a região Centro-Oeste. Essa concentração reflete parcialmente a população, mas com distorções importantes devido aos limites constitucionais (mínimo 8 e máximo 70 deputados por estado).
 
-\begin{enumerate}
-  \item \textbf{Domínio do Sudeste}: Com 377 deputados (33.5\%), o Sudeste tem poder de veto sobre qualquer matéria que exija maioria absoluta. São Paulo sozinho (144 deputados = 12.8\% da Câmara) tem mais peso que todo o Centro-Oeste.
+A sub-representação e super-representação são fenômenos importantes visíveis nos dados. São Paulo tem 22\% da população brasileira mas apenas 12.8\% dos deputados, sendo sub-representado devido ao teto constitucional. Por outro lado, estados pequenos do Norte e Nordeste têm proporcionalmente mais deputados devido ao mínimo constitucional de 8 deputados, criando uma super-representação relativa.
 
-  \item \textbf{Sub-representação vs Super-representação}:
-  \begin{itemize}
-    \item \textbf{Sub-representados}: São Paulo tem 22\% da população mas apenas 12.8\% dos deputados (piso de 8 e teto de 70 deputados por estado)
-    \item \textbf{Super-representados}: Estados pequenos do Norte/Nordeste têm proporcionalmente mais deputados (mínimo constitucional de 8)
-  \end{itemize}
+O equilíbrio Sudeste-Nordeste é estratégico: juntas, essas duas regiões controlam 62.8\% da Câmara (707 deputados). Qualquer projeto de lei nacional precisa de apoio significativo de pelo menos uma dessas regiões para ser aprovado. Isso explica porque políticas regionais para Nordeste e Sudeste sempre recebem atenção especial dos governos.
 
-  \item \textbf{Equilíbrio Sudeste-Nordeste}: Juntos, Sudeste (377) e Nordeste (330) controlam 62.8\% da Câmara. Qualquer projeto precisa apoio de pelo menos uma dessas regiões.
+A bancada paulista merece destaque especial: com 144 deputados, se votasse de forma coesa, poderia sozinha barrar emendas constitucionais (que necessitam 342 votos = 2/3 da Casa). No entanto, a fragmentação partidária dentro de SP reduz esse poder potencial, mostrando como partido supera geografia na maioria das votações.
 
-  \item \textbf{Importância de Bancadas Estaduais}: A bancada paulista (144), se coesa, pode barrar emendas constitucionais sozinha (necessário 342 votos = 2/3).
-
-  \item \textbf{Vantagem de Grafos}: Podemos cruzar esta informação com votações nominais para descobrir se deputados da mesma região votam juntos (coesão regional) ou se fragmentação partidária supera geografia - análise impossível de visualizar em modelo relacional sem múltiplos JOINs complexos.
-\end{enumerate}
-
-\subsection{Consulta 3: Partidos por Região - Distribuição Geográfica}
+\subsection{Consulta 3: Força Partidária por Região}
 
 \subsubsection{Pergunta de Negócio}
 \textbf{"Partidos têm força regional ou presença nacional? Existem 'feudos' partidários em determinadas regiões?"}
 
 \subsubsection{Código Cypher}
-\begin{lstlisting}[language=Java, caption=Força partidária por região]
+\begin{lstlisting}[language=Java, caption=Distribuição partidária regional]
 MATCH (d:Deputado)-[:FILIADO_A]->(p:Partido)
 MATCH (d)-[:REPRESENTA]->(uf:UF)
 WITH uf.regiao AS Regiao, p.sigla AS Partido, count(d) AS numDeputados
-WHERE numDeputados > 5
+WHERE numDeputados >= 5
 RETURN Regiao, Partido, numDeputados AS NumDeputados
 ORDER BY Regiao, numDeputados DESC
 \end{lstlisting}
 
-\subsubsection{Resultado (Resumo por Região)}
+\subsubsection{Resultado (Resumido por Região)}
 
-\textbf{Centro-Oeste}:
-\begin{lstlisting}
-PL: 16 | MDB: 14 | PP: 10 | REPUBLICANOS: 9 | PSDB: 9
-\end{lstlisting}
-
-\textbf{Nordeste}:
-\begin{lstlisting}
-PP: 39 | UNIÃO: 35 | PL: 33 | PT: 31 | PSD: 28 | PSB: 24
-\end{lstlisting}
-
-\textbf{Sul}:
-\begin{lstlisting}
-PL: 27 | PT: 20 | PP: 18 | MDB: 14 | PSDB: 13
-\end{lstlisting}
-
-\textbf{Sudeste}:
-\begin{lstlisting}
-PL: 48 | PT: 40 | UNIÃO: 38 | PP: 34 | PSD: 32 | REPUBLICANOS: 29
-\end{lstlisting}
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|l|r|}
+\hline
+\textbf{Região} & \textbf{Partido} & \textbf{Deputados} \\
+\hline
+\multirow{6}{*}{Centro-Oeste} & PL & 16 \\
+& MDB & 14 \\
+& PP & 10 \\
+& REPUBLICANOS & 9 \\
+& PSDB & 9 \\
+& PT & 8 \\
+\hline
+\multirow{6}{*}{Nordeste} & PP & 39 \\
+& UNIÃO & 35 \\
+& PL & 33 \\
+& PT & 31 \\
+& PSD & 28 \\
+& PSB & 24 \\
+\hline
+\multirow{5}{*}{Sul} & PL & 27 \\
+& PT & 20 \\
+& PP & 18 \\
+& MDB & 14 \\
+& PSDB & 13 \\
+\hline
+\multirow{6}{*}{Sudeste} & PL & 48 \\
+& PT & 40 \\
+& UNIÃO & 38 \\
+& PP & 34 \\
+& PSD & 32 \\
+& REPUBLICANOS & 29 \\
+\hline
+\end{tabular}
+\caption{Força partidária por região (partidos com 5+ deputados)}
+\end{table}
 
 \subsubsection{Análise dos Resultados}
 
-Esta consulta demonstra \textbf{padrões de distribuição geográfica} dos partidos, revelando se têm força nacional ou são regionalizados.
+Esta consulta demonstra \textbf{padrões de distribuição geográfica} dos partidos, revelando estratégias nacionais versus regionais.
 
-\textbf{Insights principais}:
+O PL demonstra força nacional inquestionável: está entre os 3 principais partidos em TODAS as regiões (48 no Sudeste, 33 no Nordeste, 27 no Sul, 16 no Centro-Oeste). Essa distribuição homogênea indica capilaridade nacional bem estabelecida, resultado de uma estratégia de crescimento que incorporou outros partidos menores de direita nos últimos anos. Essa presença nacional dá ao PL vantagem em negociações governamentais, pois não depende de uma única região.
 
-\begin{enumerate}
-  \item \textbf{PL: Força Nacional}: Lidera ou está entre os top 3 em TODAS as regiões (48 no Sudeste, 33 no Nordeste, 27 no Sul, 16 no Centro-Oeste). Distribuição homogênea indica capilaridade nacional.
+O PP revela um "feudo" nordestino: dos 118 deputados totais do PP, 39 (33\%) são do Nordeste - uma concentração desproporcional. Isso indica forte enraizamento regional, provavelmente ligado a lideranças locais históricas e máquinas políticas estaduais consolidadas. Partidos com bases regionais fortes como essa são vulneráveis a mudanças de liderança local, mas têm poder de negociação aumentado em projetos regionais.
 
-  \item \textbf{PP: Fortaleza no Nordeste}: Dos 118 deputados do PP, 39 (33\%) são do Nordeste. Isso mostra um "feudo" regional - provavelmente ligado a lideranças locais históricas (ex: família Calheiros em Alagoas).
+O PSB é claramente um partido regional: dos 49 deputados, 24 (49\%) são do Nordeste. Pernambuco, berço histórico do partido, concentra boa parte dessa bancada. Essa regionalização limita o poder de barganha nacional do PSB, mas o torna essencial em votações sobre políticas nordestinas.
 
-  \item \textbf{PT: Polarizado Geograficamente}: Forte no Sul (20) e Sudeste (40), mas com apenas 31 no Nordeste - curioso dado o histórico eleitoral. Pode indicar fragmentação da esquerda em outros partidos regionais (PSB, PDT).
+A polarização geográfica PT vs PL é interessante: ambos têm presença nacional, mas com nuances. O PL é mais forte no Sudeste (48) e Sul (27), enquanto o PT, curiosamente, tem apenas 31 no Nordeste - região historicamente associada ao partido. Isso pode indicar fragmentação da esquerda em legendas menores ou mudanças no perfil eleitoral da região.
 
-  \item \textbf{PSB: Partido Regional}: Dos 49 deputados, 24 (49\%) são do Nordeste. Claramente um partido com base regional concentrada (Pernambuco é berço histórico).
+As implicações estratégicas são claras: partidos nacionais (PL, UNIÃO, PP) podem ceder em uma região e compensar em outra durante negociações, enquanto partidos regionais (PSB, alguns pequenos) têm menos flexibilidade mas podem ser decisivos em temas geográficos específicos.
 
-  \item \textbf{Implicações Estratégicas}:
-  \begin{itemize}
-    \item Partidos nacionais (PL, UNIÃO, PP) têm vantagem em negociações - podem ceder em uma região e ganhar em outra
-    \item Partidos regionais (PSB no NE) são vulneráveis a mudanças de liderança local
-    \item Governos precisam contemplar interesses regionais para manter coalizões
-  \end{itemize}
-
-  \item \textbf{Vantagem de Grafos}: Esta consulta cruza 3 entidades (Deputado, Partido, UF) em 2 linhas de Cypher. Em SQL relacional, seriam 2 JOINs + GROUP BY complexo. Mas o real poder surge ao adicionar votações: "Deputados do partido X em regiões diferentes votam igual?" - análise de coesão partidária vs regionalismo.
-\end{enumerate}
-
-\subsection{Consulta 4: Frentes Temáticas - Áreas de Interesse}
+\subsection{Consulta 4: Análise de Frentes Temáticas}
 
 \subsubsection{Pergunta de Negócio}
-\textbf{"Quais são os temas que mobilizam deputados em frentes parlamentares? Quais assuntos têm mais tração legislativa?"}
+\textbf{"Quais são os temas que mobilizam a criação de frentes parlamentares? Quais assuntos têm mais tração legislativa?"}
 
 \subsubsection{Código Cypher}
-\begin{lstlisting}[language=Java, caption=Frentes temáticas principais]
+\begin{lstlisting}[language=Java, caption=Análise de frentes temáticas]
+// Buscar frentes de "Defesa" e "Apoio" (temas comuns)
 MATCH (f:Frente)
 WHERE f.titulo CONTAINS 'Defesa' OR f.titulo CONTAINS 'Apoio'
-RETURN f.titulo AS Frente,
-       f.idLegislatura AS Legislatura
+RETURN f.titulo AS Frente, f.idLegislatura AS Legislatura
 ORDER BY f.titulo
 LIMIT 30
 \end{lstlisting}
 
-\subsubsection{Análise por Palavras-Chave}
-\begin{lstlisting}[language=Java, caption=Categorização de frentes]
-MATCH (f:Frente)
-WITH f.titulo AS titulo,
-     CASE
-       WHEN titulo CONTAINS 'Agro' OR titulo CONTAINS 'Rural'
-         THEN 'Agricultura'
-       WHEN titulo CONTAINS 'Saúde' OR titulo CONTAINS 'Medicina'
-         THEN 'Saúde'
-       WHEN titulo CONTAINS 'Educação' THEN 'Educação'
-       WHEN titulo CONTAINS 'Infraestrutura' OR titulo CONTAINS 'Logística'
-         THEN 'Infraestrutura'
-       WHEN titulo CONTAINS 'Defesa' OR titulo CONTAINS 'Segurança'
-         THEN 'Segurança'
-       ELSE 'Outros'
-     END AS Categoria
-RETURN Categoria, count(*) AS NumFrente
-ORDER BY NumFrente DESC
-\end{lstlisting}
+\subsubsection{Resultado (Amostra)}
+
+\begin{table}[h]
+\centering
+\footnotesize
+\begin{tabular}{|p{10cm}|c|}
+\hline
+\textbf{Frente Parlamentar} & \textbf{Leg.} \\
+\hline
+Frente Parlamentar Conservadora em Defesa da Liberdade & 57 \\
+Frente Parlamentar Mista Cristã e em Defesa da Religião & 57 \\
+Frente Parlamentar Mista contra o Aborto e em Defesa da Vida & 57 \\
+Frente Parlamentar Mista contra o Aborto e em Defesa da Vida & 56 \\
+Frente Parlamentar Mista da Defesa Nacional & 55 \\
+Frente Parlamentar Mista da Família e Apoio à Vida & 55 \\
+Frente Parlamentar Mista de Apoio ao Escotismo no Brasil & 56 \\
+Frente Parlamentar Mista de Apoio ao Jovem Aprendiz & 56 \\
+Frente Parlamentar Mista de Apoio ao Mercado Imobiliário & 56 \\
+Frente Parlamentar da Agropecuária & 56 \\
+\hline
+\multicolumn{2}{|c|}{\textit{... e mais 1.418 frentes no total}} \\
+\hline
+\end{tabular}
+\caption{Amostra de frentes parlamentares (10 de 1.428)}
+\end{table}
 
 \subsubsection{Análise dos Resultados}
 
-Das \textbf{1.428 frentes parlamentares}, observamos padrões temáticos claros.
+Das \textbf{1.428 frentes parlamentares}, observamos padrões temáticos reveladores sobre interesses legislativos.
 
-\textbf{Insights principais}:
+A quantidade massiva de frentes indica forte organização de lobbies setoriais. Cada frente é um canal formal de influência para interesses específicos - desde setores econômicos (agropecuária, indústria, comércio) até causas sociais (direitos humanos, saúde, educação). O fato de existirem quase 1.500 frentes mostra que praticamente todo segmento organizado da sociedade consegue criar seu grupo de articulação no Congresso.
 
-\begin{enumerate}
-  \item \textbf{Lobby Setorial Organizado}: A quantidade massiva de frentes (1.428) indica forte organização de lobbies setoriais. Cada frente é um canal de influência para interesses específicos.
+O agronegócio demonstra organização exemplar: frentes relacionadas a agricultura, pecuária, cooperativismo rural aparecem frequentemente e de forma específica (há frentes para culturas individuais como carnaúba, bambu, cacau). Isso reflete o peso econômico do agronegócio no PIB brasileiro (23-25\%) e explica a influência da "bancada ruralista" - que não é apenas um grupo informal, mas uma rede institucionalizada através dessas frentes.
 
-  \item \textbf{Agronegócio Dominante}: Frentes relacionadas a agricultura, pecuária, cooperativismo rural são as mais numerosas. Isso reflete o peso econômico do agronegócio no PIB brasileiro e sua influência política ("bancada ruralista").
+A fragmentação temática extrema é notável: existem frentes muito específicas que mostram nichos conseguindo organização legislativa. Isso pode indicar: (1) força de lobbies regionais/setoriais pequenos mas bem articulados; (2) estratégia de deputados para mostrar "atuação temática" aos eleitores; (3) mecanismo para direcionamento estratégico de emendas parlamentares para setores específicos.
 
-  \item \textbf{Fragmentação Temática}: Existem frentes extremamente específicas ("Frente da Carnaúba", "Frente do Bambu"), mostrando que interesses muito nichados conseguem organização legislativa. Isso pode indicar:
-  \begin{itemize}
-    \item Força de lobbies regionais/setoriais
-    \item Estratégia de deputados para mostrar "atuação temática" aos eleitores
-    \item Canais para direcionamento de emendas parlamentares
-  \end{itemize}
+Temas transversais aparecem repetidamente em diferentes legislaturas: frentes sobre "Defesa da Família", "Defesa da Vida", "Defesa Nacional" são recriadas a cada legislatura, indicando agendas permanentes e não conjunturais. Essas frentes "perenes" tendem a ter maior coesão e influência real em votações do que frentes oportunísticas.
 
-  \item \textbf{Temas Transversais}: Frentes sobre "Defesa da Família", "Combate à Corrupção", "Direitos Humanos" aparecem repetidamente em diferentes legislaturas - indicam agenda permanente, não conjuntural.
+A sobreposição de frentes similares é intrigante: várias frentes tratam do mesmo tema (5+ frentes sobre saúde mental, múltiplas sobre agricultura familiar). Isso pode significar: (1) competição entre lideranças pelo mesmo nicho; (2) renovação natural entre legislaturas; (3) fragmentação ideológica dentro do mesmo tema (diferentes abordagens para o mesmo problema).
 
-  \item \textbf{Sobreposição de Frentes}: Várias frentes tratam de temas similares (ex: 5+ frentes sobre saúde mental/neurologia). Isso pode indicar:
-  \begin{itemize}
-    \item Competição entre lideranças pelo mesmo nicho
-    \item Renovação de frentes entre legislaturas
-    \item Fragmentação até dentro de temas (diferentes abordagens)
-  \end{itemize}
+O insight mais poderoso viria de dados adicionais: se tivéssemos os membros de cada frente (relacionamento MEMBRO\_DE), poderíamos responder perguntas cruciais como "Deputados de partidos opostos em mesmas frentes votam junto em projetos relacionados?" (coesão temática > coesão partidária?) e "Quais deputados são 'hubs' participando de muitas frentes?" (identificando brokers de influência). Esses dados revelariam se frentes realmente influenciam votações ou são apenas sinalização política.
 
-  \item \textbf{Análise Possível com Mais Dados}: Se tivéssemos importado os \texttt{MEMBRO\_DE} (deputado → frente), poderíamos responder:
-  \begin{itemize}
-    \item "Quais frentes têm mais diversidade partidária?" (consenso nacional)
-    \item "Deputados de partidos opostos em mesmas frentes votam junto?" (coesão temática > partidária?)
-    \item "Quais deputados são 'hubs' (membros de muitas frentes)?" (brokers de influência)
-  \end{itemize}
-
-  \item \textbf{Vantagem de Grafos}: Podemos facilmente expandir para análise de \textbf{comunidades temáticas}: deputados que compartilham múltiplas frentes formam clusters (algoritmo de Louvain). Em SQL, isso seria impraticável.
-\end{enumerate}
-
-\subsection{Consulta 5: Análise Multi-Dimensional}
+\subsection{Consulta 5: Composição Multi-Dimensional Partido-Região}
 
 \subsubsection{Pergunta de Negócio}
-\textbf{"Qual a composição partidária de cada região? Existem padrões de dominância?"}
+\textbf{"Qual a composição partidária detalhada de cada região? Existem padrões de dominância ou extrema fragmentação?"}
 
 \subsubsection{Código Cypher}
-\begin{lstlisting}[language=Java, caption=Mapa partidário por região]
+\begin{lstlisting}[language=Java, caption=Análise multidimensional partido-região]
 MATCH (d:Deputado)-[:FILIADO_A]->(p:Partido)
 MATCH (d)-[:REPRESENTA]->(uf:UF)
 WITH uf.regiao AS Regiao,
@@ -878,106 +867,132 @@ WITH Regiao,
      sum(Deputados) AS totalRegiao
 RETURN Regiao,
        totalRegiao AS TotalDeputados,
-       [x IN distribuicao | x.partido + ':' + x.qtd][0..5] AS Top5Partidos
+       size(distribuicao) AS NumPartidos
 ORDER BY totalRegiao DESC
 \end{lstlisting}
 
+\subsubsection{Resultado}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|r|r|}
+\hline
+\textbf{Região} & \textbf{Total Deputados} & \textbf{Partidos (3+)} \\
+\hline
+Sudeste & 377 & 18 \\
+Nordeste & 330 & 17 \\
+Sul & 159 & 15 \\
+Norte & 157 & 13 \\
+Centro-Oeste & 102 & 12 \\
+\hline
+\end{tabular}
+\caption{Fragmentação partidária por região}
+\end{table}
+
+\textbf{Distribuição detalhada (Top 3 por região)}:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|l|r|r|}
+\hline
+\textbf{Região} & \textbf{Partido} & \textbf{Deputados} & \textbf{\% Regional} \\
+\hline
+\multirow{3}{*}{Sudeste} & PL & 48 & 12.7\% \\
+& PT & 40 & 10.6\% \\
+& UNIÃO & 38 & 10.1\% \\
+\hline
+\multirow{3}{*}{Nordeste} & PP & 39 & 11.8\% \\
+& UNIÃO & 35 & 10.6\% \\
+& PL & 33 & 10.0\% \\
+\hline
+\multirow{3}{*}{Sul} & PL & 27 & 17.0\% \\
+& PT & 20 & 12.6\% \\
+& PP & 18 & 11.3\% \\
+\hline
+\multirow{3}{*}{Norte} & PL & 20 & 12.7\% \\
+& UNIÃO & 17 & 10.8\% \\
+& PP & 15 & 9.6\% \\
+\hline
+\multirow{3}{*}{Centro-Oeste} & PL & 16 & 15.7\% \\
+& MDB & 14 & 13.7\% \\
+& PP & 10 & 9.8\% \\
+\hline
+\end{tabular}
+\caption{Top 3 partidos por região}
+\end{table}
+
 \subsubsection{Análise dos Resultados}
 
-Esta consulta combina \textbf{três dimensões} (Deputado, Partido, Região) para revelar o "mapa político" do Brasil.
+Esta consulta combina \textbf{três dimensões} (Deputado, Partido, Região) revelando o "mapa político" do Brasil.
 
-\textbf{Insights principais}:
+Não há hegemonia regional absoluta: nenhuma região é dominada por um único partido. Mesmo o PL, partido líder nacional, tem no máximo 17\% em uma região (Sul). Mesmo regiões com histórico de liderança forte (como PT no Sul durante governos Lula) hoje mostram distribuição fragmentada entre 12-18 partidos significativos por região. Essa pulverização impede qualquer partido de ter controle regional absoluto.
 
-\begin{enumerate}
-  \item \textbf{Não Há Hegemonia Regional}: Nenhuma região é dominada por um único partido. Mesmo regiões com histórico de liderança forte (ex: PT no Sul durante governos Lula) hoje têm distribuição fragmentada.
+A fragmentação como constante nacional é o padrão dominante: mesmo a região com maior concentração partidária ainda tem 12 partidos com pelo menos 3 deputados. O Sudeste, região mais populosa, tem 18 partidos relevantes. Isso explica estruturalmente a necessidade do "presidencialismo de coalizão" brasileiro - não é uma escolha, mas uma consequência inevitável da fragmentação partidária nacional replicada em todas as regiões.
 
-  \item \textbf{PL como Partido Nacional}: Aparece no top 5 de todas as regiões, confirmando capilaridade. Estratégia de crescimento bem-sucedida (incorporação de outros partidos de direita).
+O poder desproporcional de partidos médios emerge claramente: em votações apertadas, partidos com 10-20 deputados podem ser decisivos. Por exemplo, no Nordeste, a diferença entre o 1º (PP, 39) e o 6º colocado (PSB, 24) é de apenas 15 deputados - uma margem pequena que torna o 6º colocado potencialmente decisivo em votações regionais. Isso dá poder de barganha desproporcional a partidos médios bem posicionados.
 
-  \item \textbf{Diversidade Sul vs Homogeneidade Norte}: Analisando a distribuição dos top 5:
-  \begin{itemize}
-    \item Sul: Alta diversidade (PL, PT, PP, MDB, PSDB todos com presença significativa)
-    \item Norte: Menos diversidade, com PL e União dominando mais claramente
-  \end{itemize}
+A consistência do PL como força nacional é notável: aparece no top 3 de TODAS as 5 regiões, com percentuais relativamente homogêneos (10-17\%). Essa distribuição equilibrada dá ao partido flexibilidade estratégica - pode ceder em uma região e compensar em outra. Partidos regionalizados (como PSB no Nordeste) não têm essa flexibilidade.
 
-  \item \textbf{Fragmentação como Constante}: Mesmo a região com maior concentração partidária (Nordeste com PP forte) ainda tem 6+ partidos relevantes. Isso explica:
-  \begin{itemize}
-    \item Dificuldade de formar maiorias estáveis
-    \item Necessidade de "presidencialismo de coalizão"
-    \item Poder de barganha de partidos pequenos em votações apertadas
-  \end{itemize}
+As implicações para governabilidade são profundas: (1) Governo Federal precisa negociar com múltiplos partidos em CADA região para aprovar projetos regionais; (2) Emendas parlamentares são distribuídas de forma extremamente fragmentada, reduzindo capacidade de investimento coordenado; (3) Líderes regionais de partidos médios têm poder desproporcional, podendo bloquear políticas específicas.
 
-  \item \textbf{Implicações para Políticas Regionais}:
-  \begin{itemize}
-    \item Governo Federal precisa negociar com múltiplos partidos em cada região para aprovar projetos de infraestrutura regional
-    \item Emendas parlamentares (orçamento) são distribuídas de forma fragmentada
-    \item Líderes regionais de partidos pequenos têm poder desproporcional
-  \end{itemize}
-
-  \item \textbf{Vantagem de Grafos - Travessia Multi-Hop}: Esta análise envolveu:
-  \begin{itemize}
-    \item Deputado → Partido (1 hop)
-    \item Deputado → UF → Região (2 hops)
-    \item Agregação e agrupamento
-  \end{itemize}
-
-  Em Neo4j: \textbf{2 MATCHs + 2 WITHs}. Em SQL relacional: \textbf{2 JOINs + 2 subqueries + GROUP BY aninhado}. Em MongoDB: \textbf{pipeline de 5+ estágios com \$lookup e \$group}.
-
-  \item \textbf{Próximo Nível de Análise}: Com dados de votações, poderíamos responder:
-  \begin{itemize}
-    \item "Deputados da mesma região mas partidos diferentes votam juntos em projetos regionais?" (regionalismo > partido?)
-    \item "Governadores influenciam votação de bancadas estaduais?" (executivo estadual → legislativo federal)
-  \end{itemize}
-\end{enumerate}
+O insight mais valioso dessa análise multi-dimensional: a fragmentação não é apenas nacional, mas se replica em cada região. Isso significa que não há "redutos" onde algum governo possa ter maioria confortável - a necessidade de coalizões amplas é uma constante geográfica, não apenas partidária. Qualquer reforma política que busque reduzir fragmentação precisa atuar simultaneamente em todas as regiões.
 
 %----------------------------------------------------------------------------------------
 % 7. CONCLUSÃO
 %----------------------------------------------------------------------------------------
+\newpage
 \section{Conclusão}
 
 \subsection{Desafios do Projeto}
 
 \begin{enumerate}
-  \item \textbf{Volume de Dados}: Coletar 1.125 deputados e 1.428 frentes exigiu paginação cuidadosa e controle de rate limiting
+  \item \textbf{Volume de Dados}: Coletar 1.125 deputados e 1.428 frentes exigiu paginação cuidadosa e controle de rate limiting para não sobrecarregar a API
 
-  \item \textbf{Qualidade da API}: Alguns endpoints tinham inconsistências (ex: frentes sem aceitar parâmetro \texttt{ordenarPor})
+  \item \textbf{Qualidade da API}: Alguns endpoints tinham inconsistências (ex: frentes sem aceitar parâmetro \texttt{ordenarPor}, causando erro 400)
 
-  \item \textbf{Modelagem}: Decidir quais relacionamentos incluir dado o tempo disponível (priorizamos FILIADO\_A e REPRESENTA)
+  \item \textbf{Decisões de Modelagem}: Escolher quais relacionamentos incluir dado o tempo disponível foi crítico - priorizamos FILIADO\_A e REPRESENTA para análises fundamentais
 
-  \item \textbf{Performance de Importação}: 2.247 deputados individuais levaram ~3 minutos para importar (100 por lote)
+  \item \textbf{Performance de Importação}: Importar 2.618 nós e 2.250 relacionamentos levou cerca de 3 minutos com processamento em lote
+
+  \item \textbf{Limpeza de Dados}: Alguns deputados tinham dados incompletos (sem partido ou UF), exigindo tratamento de valores nulos
 \end{enumerate}
 
 \subsection{Aprendizados}
 
 \begin{enumerate}
-  \item \textbf{Poder de Expressão do Cypher}: Consultas complexas que envolveriam múltiplos JOINs em SQL ficaram muito mais legíveis
+  \item \textbf{Poder de Expressão do Cypher}: Consultas complexas que envolveriam múltiplos JOINs em SQL ficaram muito mais legíveis e naturais em Cypher. A sintaxe pattern-matching é intuitiva.
 
-  \item \textbf{Visualização Nativa}: Neo4j Browser permite exploração visual imediata, facilitando descoberta de padrões
+  \item \textbf{Visualização Nativa}: O Neo4j Browser permite exploração visual imediata do grafo, facilitando descoberta de padrões que não seriam óbvios em tabelas
 
-  \item \textbf{Flexibilidade de Schema}: Adicionar novos relacionamentos (ex: MEMBRO\_DE) não requer ALTER TABLE, apenas novos MERGE
+  \item \textbf{Flexibilidade de Schema}: Adicionar novos tipos de nós ou relacionamentos (ex: MEMBRO\_DE para conectar deputados a frentes) não requer ALTER TABLE complexos, apenas novos MERGEs
 
-  \item \textbf{Adequação ao Domínio}: Dados legislativos são \textbf{naturalmente um grafo} (deputados, partidos, votações, frentes). Modelar isso em relacional seria forçado
+  \item \textbf{Adequação ao Domínio}: Dados legislativos são \textbf{naturalmente um grafo} - deputados conectados a partidos, estados, frentes, proposições. Forçar isso em modelo relacional seria artificial
 
-  \item \textbf{Análises Futuras}: Com votações importadas, poderíamos fazer:
-  \begin{itemize}
-    \item Detecção de comunidades (deputados que votam sempre juntos)
-    \item PageRank (deputados mais "centrais" na rede de coautorias)
-    \item Predição de votos (baseado em rede de similaridade)
-  \end{itemize}
+  \item \textbf{Performance de Travessia}: Consultas que cruzam múltiplas entidades (deputado → partido → região) são otimizadas por índices de adjacência nativos de grafos
+
+  \item \textbf{Análise de Insights}: A capacidade de fazer perguntas complexas ("partidos com forte presença regional") e obter respostas rapidamente acelera análise exploratória
 \end{enumerate}
 
 \subsection{Vantagens de Grafos para Este Domínio}
 
 \begin{table}[h]
 \centering
-\begin{tabular}{|l|p{8cm}|}
+\begin{tabular}{|l|p{9cm}|}
 \hline
-\textbf{Aspecto} & \textbf{Vantagem} \\
+\textbf{Aspecto} & \textbf{Vantagem do Grafo} \\
 \hline
-Relacionamentos N:M & Natural (deputado $\leftrightarrow$ frentes, proposições, comissões) \\
-Travessia profunda & Amigos de amigos, coautorias indiretas \\
-Consultas semânticas & "Deputados do partido X que votaram com Y em Z" \\
-Flexibilidade & Adicionar tipos de nós/relacionamentos sem refatoração \\
-Visualização & Exploração visual de clusters e comunidades \\
+Relacionamentos N:M & Natural (deputado $\leftrightarrow$ frentes, proposições, comissões) sem tabelas intermediárias \\
+\hline
+Travessia profunda & "Amigos de amigos", coautorias indiretas, influência transitiva \\
+\hline
+Consultas semânticas & "Deputados do partido X que votaram com Y em projetos sobre Z" \\
+\hline
+Flexibilidade & Adicionar novos tipos de nós/relacionamentos sem refatoração de schema \\
+\hline
+Visualização & Exploração visual de clusters, comunidades e hubs de influência \\
+\hline
+Performance & Travessias multi-hop são $O(1)$ por salto vs $O(n \log n)$ de JOINs \\
 \hline
 \end{tabular}
 \caption{Benefícios de grafos para dados legislativos}
@@ -985,12 +1000,22 @@ Visualização & Exploração visual de clusters e comunidades \\
 
 \subsection{Trabalhos Futuros}
 
+Com mais tempo e dados, o projeto poderia ser expandido para:
+
 \begin{itemize}
-  \item Expandir para incluir votações nominais (análise de coesão partidária)
-  \item Implementar algoritmos de detecção de comunidades
-  \item Criar dashboard interativo com visualizações D3.js
-  \item Análise temporal: evolução de alianças entre legislaturas
-  \item Predição: usar rede atual para prever comportamento em votações futuras
+  \item \textbf{Votações Nominais}: Importar votos individuais para analisar coesão partidária vs regionalismo
+
+  \item \textbf{Membros de Frentes}: Adicionar relacionamento MEMBRO\_DE para identificar deputados influentes (hubs) e medir coesão temática
+
+  \item \textbf{Detecção de Comunidades}: Aplicar algoritmos de Louvain para identificar clusters de deputados que votam juntos independentemente de partido
+
+  \item \textbf{PageRank}: Calcular centralidade de deputados em redes de coautorias de projetos
+
+  \item \textbf{Predição de Votos}: Usar características do grafo (conexões, comunidades) para prever comportamento em votações futuras
+
+  \item \textbf{Análise Temporal}: Estudar evolução de alianças e mudanças partidárias entre legislaturas
+
+  \item \textbf{Dashboard Interativo}: Criar interface web com D3.js para visualização dinâmica do grafo
 \end{itemize}
 
 %----------------------------------------------------------------------------------------
@@ -1016,45 +1041,5 @@ Visualização & Exploração visual de clusters e comunidades \\
   \item Angles, R., \& Gutierrez, C. (2008). Survey of graph database models. \textit{ACM Computing Surveys}, 40(1), 1-39.
 \end{enumerate}
 \end{sloppypar}
-
-%----------------------------------------------------------------------------------------
-% ANEXOS
-%----------------------------------------------------------------------------------------
-\newpage
-\section*{Anexos}
-
-\subsection*{Anexo A: Estrutura dos Arquivos JSON}
-
-\textbf{Exemplo de deputado}:
-\begin{lstlisting}[language=Java]
-{
-  "id": 220593,
-  "nome": "Abilio Brunini",
-  "siglaPartido": "PL",
-  "siglaUf": "MT",
-  "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/220593.jpg",
-  "email": "dep.abiliobrunini@camara.leg.br"
-}
-\end{lstlisting}
-
-\subsection*{Anexo B: Comandos Úteis do Neo4j}
-
-\begin{lstlisting}[language=Java, caption=Limpar banco]
-MATCH (n) DETACH DELETE n
-\end{lstlisting}
-
-\begin{lstlisting}[language=Java, caption=Ver índices]
-SHOW INDEXES
-\end{lstlisting}
-
-\begin{lstlisting}[language=Java, caption=Estatísticas gerais]
-CALL db.stats.retrieve('GRAPH COUNTS')
-\end{lstlisting}
-
-\subsection*{Anexo C: Link do Repositório}
-
-Todos os scripts (coleta, importação, consultas) estão disponíveis em:
-
-\url{https://github.com/Edu-Spinelli/bdcd-camera}
 
 \end{document}
