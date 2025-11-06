@@ -313,39 +313,44 @@ O modelo de dados representa as relações entre entidades do sistema legislativ
 \begin{figure}[h]
 \centering
 \begin{tikzpicture}[
-  node distance=2.5cm,
-  every node/.style={font=\footnotesize},
-  deputado/.style={rectangle, rounded corners, draw=nodedeputado, fill=nodedeputado!20, thick, minimum width=3.5cm, minimum height=1.2cm, align=center},
-  partido/.style={rectangle, rounded corners, draw=nodepartido, fill=nodepartido!20, thick, minimum width=3cm, minimum height=1.2cm, align=center},
-  frente/.style={rectangle, rounded corners, draw=nodefrente, fill=nodefrente!20, thick, minimum width=3.5cm, minimum height=1.2cm, align=center},
-  uf/.style={rectangle, rounded corners, draw=nodeuf, fill=nodeuf!20, thick, minimum width=2.5cm, minimum height=1.2cm, align=center},
-  rel/.style={->, >=stealth, thick}
+  node distance=2.2cm,
+  every node/.style={font=\small},
+  deputado/.style={rectangle, rounded corners, draw=nodedeputado, fill=nodedeputado!20, thick, minimum width=3.8cm, minimum height=1.3cm, align=center},
+  partido/.style={rectangle, rounded corners, draw=nodepartido, fill=nodepartido!20, thick, minimum width=3.2cm, minimum height=1.3cm, align=center},
+  frente/.style={rectangle, rounded corners, draw=nodefrente, fill=nodefrente!20, thick, minimum width=3.8cm, minimum height=1.3cm, align=center},
+  uf/.style={rectangle, rounded corners, draw=nodeuf, fill=nodeuf!20, thick, minimum width=2.8cm, minimum height=1.3cm, align=center},
+  rel/.style={->, >=stealth, very thick}
 ]
 
-% Deputados
+% Linha superior: Deputados e Partidos
 \node[deputado] (dep1) {\textbf{Deputado}\\id: 220593\\nome: Abilio Brunini};
-\node[deputado, below=1.5cm of dep1] (dep2) {\textbf{Deputado}\\id: 204554\\nome: Abílio Santana};
+\node[partido, right=2.5cm of dep1] (part1) {\textbf{Partido}\\sigla: PL\\nome: P. Liberal};
+\node[uf, right=2.5cm of part1] (uf1) {\textbf{UF}\\sigla: MT\\Centro-Oeste};
 
-% Partidos
-\node[partido, right=3cm of dep1] (part1) {\textbf{Partido}\\sigla: PL\\nome: Partido Liberal};
-\node[partido, right=3cm of dep2] (part2) {\textbf{Partido}\\sigla: PSC\\nome: Social Cristão};
+% Linha inferior: Deputado 2, Partido 2, UF 2
+\node[deputado, below=2cm of dep1] (dep2) {\textbf{Deputado}\\id: 204554\\nome: Abilio Santana};
+\node[partido, right=2.5cm of dep2] (part2) {\textbf{Partido}\\sigla: PSC\\P. Social Cristao};
+\node[uf, right=2.5cm of part2] (uf2) {\textbf{UF}\\sigla: BA\\Nordeste};
 
-% UFs
-\node[uf, below right=1cm and 3cm of dep1] (uf1) {\textbf{UF}\\sigla: MT\\regiao: Centro-Oeste};
-\node[uf, below=1.5cm of uf1] (uf2) {\textbf{UF}\\sigla: BA\\regiao: Nordeste};
-
-% Frentes
-\node[frente, below=4cm of dep2] (frente1) {\textbf{Frente}\\id: 55700\\Integracao Sul-Americana};
+% Frentes na parte inferior
+\node[frente, below=2.5cm of dep2, xshift=-1cm] (frente1) {\textbf{Frente}\\id: 55700\\Integracao S-Americana};
 \node[frente, right=2cm of frente1] (frente2) {\textbf{Frente}\\id: 54214\\Agropecuaria};
 
-% Relacionamentos
-\draw[rel, blue, very thick] (dep1) -- node[above, sloped] {FILIADO\_A} (part1);
-\draw[rel, blue, very thick] (dep2) -- node[above, sloped] {FILIADO\_A} (part2);
-\draw[rel, orange, very thick] (dep1) -- node[above, sloped] {REPRESENTA} (uf1);
-\draw[rel, orange, very thick] (dep2) -- node[above, sloped] {REPRESENTA} (uf2);
+% Relacionamentos principais (implementados)
+\draw[rel, blue!70] (dep1) -- node[above, font=\tiny] {FILIADO\_A} (part1);
+\draw[rel, blue!70] (dep2) -- node[above, font=\tiny] {FILIADO\_A} (part2);
+\draw[rel, orange!80] (dep1) -- node[above, font=\tiny] {REPRESENTA} (uf1);
+\draw[rel, orange!80] (dep2) -- node[above, font=\tiny] {REPRESENTA} (uf2);
+
+% Relacionamentos opcionais (não implementados neste trabalho)
+\draw[rel, green!60, dashed] (dep1) to[out=-90, in=90] node[left, font=\tiny, text=gray] {MEMBRO\_DE*} (frente1);
+\draw[rel, green!60, dashed] (dep2) to[out=-90, in=90] node[right, font=\tiny, text=gray] {MEMBRO\_DE*} (frente2);
+
+% Legenda
+\node[below=0.3cm of frente1, anchor=north, font=\tiny, text=gray] {* Relacionamento não implementado neste trabalho};
 
 \end{tikzpicture}
-\caption{Modelo de grafo com 2 exemplos de cada tipo de nó e relacionamento}
+\caption{Modelo de grafo com 2 exemplos de cada tipo de nó e relacionamento. FILIADO\_A e REPRESENTA foram implementados; MEMBRO\_DE (tracejado) é uma extensão futura possível.}
 \end{figure}
 
 \subsection{Descrição dos Tipos de Nós}
